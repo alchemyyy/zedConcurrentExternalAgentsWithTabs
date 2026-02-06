@@ -452,7 +452,11 @@ impl TerminalInlineAssist {
                                         assist_id.0,
                                     );
 
-                                    workspace.show_toast(Toast::new(id, error), NotificationSource::Agent, cx);
+                                    workspace.show_toast(
+                                        Toast::new(id, error),
+                                        NotificationSource::Agent,
+                                        cx,
+                                    );
                                 })
                             }
 
