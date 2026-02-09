@@ -14,7 +14,7 @@ use util::shell::ShellKind;
 use crate::{SettingsWindow, components::SettingsInputField};
 
 const HARDCODED_RULES_DESCRIPTION: &str =
-    "`rm -rf` on `/`, `~`, `$HOME`, `.`, and `..` are always blocked.";
+    "`rm -rf` commands are always blocked when run on `$HOME`, `~`, `.`, `..`, or `/`";
 
 /// Tools that support permission rules
 const TOOLS: &[ToolInfo] = &[
@@ -115,6 +115,7 @@ const fn tool_index(id: &str) -> usize {
 /// with code background highlights applied to each span.
 fn render_inline_code_markdown(text: &str, window: &Window, cx: &App) -> StyledText {
     let code_background = cx.theme().colors().surface_background;
+    let text_color = cx.theme().colors().text;
     let mut plain = String::new();
     let mut highlights: Vec<(std::ops::Range<usize>, HighlightStyle)> = Vec::new();
     let mut in_code = false;
@@ -126,6 +127,7 @@ fn render_inline_code_markdown(text: &str, window: &Window, cx: &App) -> StyledT
                 highlights.push((
                     code_start..plain.len(),
                     HighlightStyle {
+                        color: Some(text_color),
                         background_color: Some(code_background),
                         ..Default::default()
                     },
@@ -139,7 +141,14 @@ fn render_inline_code_markdown(text: &str, window: &Window, cx: &App) -> StyledT
         }
     }
 
-    StyledText::new(plain).with_default_highlights(&window.text_style(), highlights)
+    let whole_range_highlight = HighlightStyle {
+        color: Some(text_color),
+        ..Default::default()
+    };
+    StyledText::new(plain.clone()).with_default_highlights(
+        &window.text_style(),
+        std::iter::once((0..plain.len(), whole_range_highlight)).chain(highlights),
+    )
 }
 
 /// Renders the main tool permissions setup page showing a list of tools
