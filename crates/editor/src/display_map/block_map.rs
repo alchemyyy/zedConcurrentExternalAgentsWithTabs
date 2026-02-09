@@ -890,72 +890,89 @@ impl BlockMap {
             // Ensure the edit starts at a transform boundary.
             // If the edit starts within an isomorphic transform, preserve its prefix
             // If the edit lands within a replacement block, expand the edit to include the start of the replaced input range
-            let transform = cursor.item().unwrap();
-            let transform_rows_before_edit = old_start - *cursor.start();
-            if transform_rows_before_edit > RowDelta(0) {
-                if transform.block.is_none() {
-                    // Preserve any portion of the old isomorphic transform that precedes this edit.
-                    push_isomorphic(
-                        &mut new_transforms,
-                        transform_rows_before_edit,
-                        wrap_snapshot,
-                    );
-                } else {
-                    // We landed within a block that replaces some lines, so we
-                    // extend the edit to start at the beginning of the
-                    // replacement.
-                    debug_assert!(transform.summary.input_rows > WrapRow(0));
-                    old_start -= transform_rows_before_edit;
-                    new_start -= transform_rows_before_edit;
-                }
-            }
-
-            // Decide where the edit ends
-            // * It should end at a transform boundary
-            // * Coalesce edits that intersect the same transform
             let mut old_end = edit.old.end;
             let mut new_end = edit.new.end;
-            loop {
-                let span = ztracing::debug_span!("decide where edit ends loop");
-                let _enter = span.enter();
-                // Seek to the transform starting at or after the end of the edit
-                cursor.seek(&old_end, Bias::Left);
-                cursor.next();
-
-                // Extend edit to the end of the discarded transform so it is reconstructed in full
-                let transform_rows_after_edit = *cursor.start() - old_end;
-                old_end += transform_rows_after_edit;
-                new_end += transform_rows_after_edit;
-
-                // Combine this edit with any subsequent edits that intersect the same transform.
-                while let Some(next_edit) = edits.peek() {
-                    if next_edit.old.start <= *cursor.start() {
-                        old_end = next_edit.old.end;
-                        new_end = next_edit.new.end;
-                        cursor.seek(&old_end, Bias::Left);
-                        cursor.next();
-                        edits.next();
+            if let Some(transform) = cursor.item() {
+                let transform_rows_before_edit = old_start - *cursor.start();
+                if transform_rows_before_edit > RowDelta(0) {
+                    if transform.block.is_none() {
+                        // Preserve any portion of the old isomorphic transform that precedes this edit.
+                        push_isomorphic(
+                            &mut new_transforms,
+                            transform_rows_before_edit,
+                            wrap_snapshot,
+                        );
                     } else {
+                        // We landed within a block that replaces some lines, so we
+                        // extend the edit to start at the beginning of the
+                        // replacement.
+                        debug_assert!(transform.summary.input_rows > WrapRow(0));
+                        old_start -= transform_rows_before_edit;
+                        new_start -= transform_rows_before_edit;
+                    }
+                }
+
+                // Decide where the edit ends
+                // * It should end at a transform boundary
+                // * Coalesce edits that intersect the same transform
+                loop {
+                    let span = ztracing::debug_span!("decide where edit ends loop");
+                    let _enter = span.enter();
+                    // Seek to the transform starting at or after the end of the edit
+                    cursor.seek(&old_end, Bias::Left);
+                    cursor.next();
+
+                    // Extend edit to the end of the discarded transform so it is reconstructed in full
+                    let transform_rows_after_edit = *cursor.start() - old_end;
+                    old_end += transform_rows_after_edit;
+                    new_end += transform_rows_after_edit;
+
+                    // Combine this edit with any subsequent edits that intersect the same transform.
+                    while let Some(next_edit) = edits.peek() {
+                        if next_edit.old.start <= *cursor.start() {
+                            old_end = next_edit.old.end;
+                            new_end = next_edit.new.end;
+                            cursor.seek(&old_end, Bias::Left);
+                            cursor.next();
+                            edits.next();
+                        } else {
+                            break;
+                        }
+                    }
+
+                    if *cursor.start() == old_end {
                         break;
                     }
                 }
 
-                if *cursor.start() == old_end {
-                    break;
+                // Discard below blocks at the end of the edit. They'll be reconstructed.
+                while let Some(transform) = cursor.item() {
+                    if transform
+                        .block
+                        .as_ref()
+                        .is_some_and(|b| b.place_below() || matches!(b, Block::Spacer { .. }))
+                    {
+                        cursor.next();
+                    } else {
+                        break;
+                    }
                 }
-            }
-
-            // Discard below blocks at the end of the edit. They'll be reconstructed.
-            while let Some(transform) = cursor.item() {
-                if transform
-                    .block
-                    .as_ref()
-                    .is_some_and(|b| b.place_below() || matches!(b, Block::Spacer { .. }))
-                {
-                    cursor.next();
-                } else {
-                    break;
+            } else {
+                // Cursor exhausted: all old transforms have been consumed.
+                // This can happen when the transforms tree has fewer input rows
+                // than the wrap snapshot expects (an inconsistency from a prior sync).
+                // Consume all remaining edits and rebuild blocks for the remaining range.
+                log::error!(
+                    "BlockMap::sync: cursor exhausted before edit at row {:?} \
+                     (old transforms input_rows: {:?}, wrap snapshot max row: {:?})",
+                    old_start,
+                    *cursor.start(),
+                    wrap_snapshot.max_point().row(),
+                );
+                while let Some(next_edit) = edits.next() {
+                    new_end = cmp::max(new_end, next_edit.new.end);
                 }
+                new_end = cmp::max(new_end, wrap_snapshot.max_point().row() + WrapRow(1));
             }
 
             // Find the blocks within this edited region.
@@ -1097,10 +1114,17 @@ impl BlockMap {
         }
 
         new_transforms.append(cursor.suffix(), ());
-        debug_assert_eq!(
-            new_transforms.summary().input_rows,
-            wrap_snapshot.max_point().row() + WrapRow(1),
-        );
+        let actual_input_rows = new_transforms.summary().input_rows;
+        let expected_input_rows = wrap_snapshot.max_point().row() + WrapRow(1);
+        if actual_input_rows != expected_input_rows {
+            log::error!(
+                "BlockMap::sync: input_rows invariant violated after sync \
+                 (actual: {:?}, expected: {:?})",
+                actual_input_rows,
+                expected_input_rows,
+            );
+        }
+        debug_assert_eq!(actual_input_rows, expected_input_rows);
 
         drop(cursor);
         *transforms = new_transforms;
