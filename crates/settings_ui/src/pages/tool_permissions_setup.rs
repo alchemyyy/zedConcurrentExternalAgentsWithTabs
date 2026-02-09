@@ -118,9 +118,6 @@ pub(crate) fn render_tool_permissions_setup_page(
         .map(|(i, tool)| render_tool_list_item(settings_window, tool, i, window, cx))
         .collect();
 
-    let page_description =
-        "Configure regex patterns to control which tool actions require confirmation.";
-
     let scroll_step = px(40.);
 
     v_flex()
@@ -148,22 +145,14 @@ pub(crate) fn render_tool_permissions_setup_page(
         .pb_16()
         .overflow_y_scroll()
         .track_scroll(scroll_handle)
-        .child(Label::new("Tool Permission Rules").size(LabelSize::Large))
         .child(
-            Label::new(page_description)
-                .size(LabelSize::Small)
-                .color(Color::Muted),
-        )
-        .child(
-            v_flex()
-                .mt_4()
-                .children(tool_items.into_iter().enumerate().flat_map(|(i, item)| {
-                    let mut elements: Vec<AnyElement> = vec![item];
-                    if i + 1 < TOOLS.len() {
-                        elements.push(Divider::horizontal().into_any_element());
-                    }
-                    elements
-                })),
+            v_flex().children(tool_items.into_iter().enumerate().flat_map(|(i, item)| {
+                let mut elements: Vec<AnyElement> = vec![item];
+                if i + 1 < TOOLS.len() {
+                    elements.push(Divider::horizontal().into_any_element());
+                }
+                elements
+            })),
         )
         .into_any_element()
 }
