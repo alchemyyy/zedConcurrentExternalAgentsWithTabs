@@ -113,7 +113,7 @@ const fn tool_index(id: &str) -> usize {
 
 /// Parses a string containing backtick-delimited code spans into a `StyledText`
 /// with code background highlights applied to each span.
-fn render_inline_code_markdown(text: &str, window: &Window, cx: &App) -> StyledText {
+fn render_inline_code_markdown(text: &str, cx: &App) -> StyledText {
     let code_background = cx.theme().colors().surface_background;
     let mut plain = String::new();
     let mut highlights: Vec<(std::ops::Range<usize>, HighlightStyle)> = Vec::new();
@@ -139,7 +139,7 @@ fn render_inline_code_markdown(text: &str, window: &Window, cx: &App) -> StyledT
         }
     }
 
-    StyledText::new(plain).with_default_highlights(&window.text_style(), highlights)
+    StyledText::new(plain).with_highlights(highlights)
 }
 
 /// Renders the main tool permissions setup page showing a list of tools
@@ -336,7 +336,7 @@ pub(crate) fn render_tool_config_page(
                 ),
         )
         .when(tool.id == TerminalTool::NAME, |this| {
-            this.child(render_hardcoded_security_banner(window, cx))
+            this.child(render_hardcoded_security_banner(cx))
         })
         .child(render_verification_section(tool.id, window, cx))
         .when_some(
@@ -403,10 +403,7 @@ pub(crate) fn render_tool_config_page(
         .into_any_element()
 }
 
-fn render_hardcoded_security_banner(
-    window: &mut Window,
-    cx: &mut Context<SettingsWindow>,
-) -> AnyElement {
+fn render_hardcoded_security_banner(cx: &mut Context<SettingsWindow>) -> AnyElement {
     v_flex()
         .mt_3()
         .child(
@@ -415,11 +412,7 @@ fn render_hardcoded_security_banner(
                     .py_1()
                     .text_sm()
                     .text_color(cx.theme().colors().text)
-                    .child(render_inline_code_markdown(
-                        HARDCODED_RULES_DESCRIPTION,
-                        window,
-                        cx,
-                    )),
+                    .child(render_inline_code_markdown(HARDCODED_RULES_DESCRIPTION, cx)),
             ),
         )
         .into_any_element()
@@ -571,7 +564,7 @@ fn render_verification_section(
                                 div()
                                     .text_xs()
                                     .text_color(cx.theme().colors().text)
-                                    .child(render_inline_code_markdown(HARDCODED_RULES_DESCRIPTION, window, cx)),
+                                    .child(render_inline_code_markdown(HARDCODED_RULES_DESCRIPTION, cx)),
                             )
                         } else if let Some(reason) = &denial_reason {
                             this.child(
@@ -595,7 +588,7 @@ fn render_verification_section(
                             div()
                                 .text_xs()
                                 .text_color(cx.theme().colors().text)
-                                .child(render_inline_code_markdown(HARDCODED_RULES_DESCRIPTION, window, cx)),
+                                .child(render_inline_code_markdown(HARDCODED_RULES_DESCRIPTION, cx)),
                         )
                     })
                     .when_some(
