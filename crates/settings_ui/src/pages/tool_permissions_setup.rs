@@ -115,7 +115,6 @@ const fn tool_index(id: &str) -> usize {
 /// with code background highlights applied to each span.
 fn render_inline_code_markdown(text: &str, window: &Window, cx: &App) -> StyledText {
     let code_background = cx.theme().colors().surface_background;
-    let text_color = cx.theme().colors().text;
     let mut plain = String::new();
     let mut highlights: Vec<(std::ops::Range<usize>, HighlightStyle)> = Vec::new();
     let mut in_code = false;
@@ -127,7 +126,6 @@ fn render_inline_code_markdown(text: &str, window: &Window, cx: &App) -> StyledT
                 highlights.push((
                     code_start..plain.len(),
                     HighlightStyle {
-                        color: Some(text_color),
                         background_color: Some(code_background),
                         ..Default::default()
                     },
@@ -141,14 +139,7 @@ fn render_inline_code_markdown(text: &str, window: &Window, cx: &App) -> StyledT
         }
     }
 
-    let whole_range_highlight = HighlightStyle {
-        color: Some(text_color),
-        ..Default::default()
-    };
-    StyledText::new(plain.clone()).with_default_highlights(
-        &window.text_style(),
-        std::iter::once((0..plain.len(), whole_range_highlight)).chain(highlights),
-    )
+    StyledText::new(plain).with_default_highlights(&window.text_style(), highlights)
 }
 
 /// Renders the main tool permissions setup page showing a list of tools
@@ -419,11 +410,17 @@ fn render_hardcoded_security_banner(
     v_flex()
         .mt_3()
         .child(
-            Banner::new().child(div().py_1().text_sm().child(render_inline_code_markdown(
-                HARDCODED_RULES_DESCRIPTION,
-                window,
-                cx,
-            ))),
+            Banner::new().child(
+                div()
+                    .py_1()
+                    .text_sm()
+                    .text_color(cx.theme().colors().text)
+                    .child(render_inline_code_markdown(
+                        HARDCODED_RULES_DESCRIPTION,
+                        window,
+                        cx,
+                    )),
+            ),
         )
         .into_any_element()
 }
@@ -573,6 +570,7 @@ fn render_verification_section(
                             this.child(
                                 div()
                                     .text_xs()
+                                    .text_color(cx.theme().colors().text)
                                     .child(render_inline_code_markdown(HARDCODED_RULES_DESCRIPTION, window, cx)),
                             )
                         } else if let Some(reason) = &denial_reason {
@@ -596,6 +594,7 @@ fn render_verification_section(
                         this.child(
                             div()
                                 .text_xs()
+                                .text_color(cx.theme().colors().text)
                                 .child(render_inline_code_markdown(HARDCODED_RULES_DESCRIPTION, window, cx)),
                         )
                     })
