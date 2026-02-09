@@ -340,11 +340,8 @@ fn check_commands(
     // - ALLOW: Track if ALL commands match at least one allow pattern
     let mut any_matched_confirm = false;
     let mut all_matched_allow = true;
-    let mut had_any_commands = false;
 
     for command in commands {
-        had_any_commands = true;
-
         // DENY: immediate return if any command matches a deny pattern
         if rules.always_deny.iter().any(|r| r.is_match(&command)) {
             return ToolPermissionDecision::Deny(format!(
@@ -369,7 +366,7 @@ fn check_commands(
         return ToolPermissionDecision::Confirm;
     }
 
-    if allow_enabled && all_matched_allow && had_any_commands {
+    if allow_enabled && all_matched_allow && !commands.is_empty() {
         return ToolPermissionDecision::Allow;
     }
 
