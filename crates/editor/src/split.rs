@@ -40,7 +40,6 @@ use crate::{
 };
 use util::ResultExt as _;
 
-
 const LINKED_CURSORS_KEY: &str = "split_diff_linked_cursors";
 
 fn read_linked_cursors_enabled() -> bool {
