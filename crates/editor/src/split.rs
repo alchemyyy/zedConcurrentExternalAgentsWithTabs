@@ -5,6 +5,7 @@ use std::{
 
 use buffer_diff::{BufferDiff, BufferDiffSnapshot};
 use collections::HashMap;
+use db::kvp::KEY_VALUE_STORE;
 use feature_flags::{FeatureFlag, FeatureFlagAppExt as _};
 use gpui::{Action, AppContext as _, Entity, EventEmitter, Focusable, Subscription, WeakEntity};
 use itertools::Itertools;
@@ -38,7 +39,29 @@ use crate::{
     actions::{DisableBreakpoint, EditLogBreakpoint, EnableBreakpoint, ToggleBreakpoint},
     display_map::Companion,
 };
+use util::ResultExt as _;
 use zed_actions::assistant::InlineAssist;
+
+const LINKED_CURSORS_KEY: &str = "split_diff_linked_cursors";
+
+fn read_linked_cursors_enabled() -> bool {
+    KEY_VALUE_STORE
+        .read_kvp(LINKED_CURSORS_KEY)
+        .ok()
+        .flatten()
+        .map(|v| v == "true")
+        .unwrap_or(true)
+}
+
+fn write_linked_cursors_enabled(enabled: bool, cx: &mut Context<SplittableEditor>) {
+    cx.background_spawn(async move {
+        KEY_VALUE_STORE
+            .write_kvp(LINKED_CURSORS_KEY.to_string(), enabled.to_string())
+            .await
+            .log_err();
+    })
+    .detach();
+}
 
 pub(crate) fn convert_lhs_rows_to_rhs(
     lhs_excerpt_to_rhs_excerpt: &HashMap<ExcerptId, ExcerptId>,
@@ -472,7 +495,7 @@ impl SplittableEditor {
             lhs: None,
             workspace: workspace.downgrade(),
             split_state,
-            linked_cursors: true,
+            linked_cursors: read_linked_cursors_enabled(),
             _subscriptions: subscriptions,
         }
     }
@@ -763,6 +786,7 @@ impl SplittableEditor {
         cx: &mut Context<Self>,
     ) {
         self.linked_cursors = !self.linked_cursors;
+        write_linked_cursors_enabled(self.linked_cursors, cx);
         cx.notify();
     }
 
