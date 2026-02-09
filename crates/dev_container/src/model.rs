@@ -67,17 +67,21 @@ fn docker_cli() -> &'static str {
 */
 pub(crate) async fn spawn_dev_container(
     config: DevContainerConfig,
-    project_path: Arc<&Path>,
+    local_project_path: Arc<&Path>,
 ) -> Result<DevContainerUp, RenameMeError> {
     let mut labels = HashMap::new();
     labels.insert(
         "devcontainer.local_folder",
-        project_path.display().to_string(),
+        local_project_path.display().to_string(),
     );
     labels.insert(
         "devcontainer.config_file",
         config.config_path.display().to_string(),
     );
+
+    let devcontainer = deserialize_devcontainer_json(
+        &std::fs::read_to_string(local_project_path.join(config.config_path)).expect("todo"),
+    )?;
 
     let Ok(mut command) = create_docker_query_containers(Some(labels)) else {
         return Err(RenameMeError::UnmappedError);
@@ -92,7 +96,7 @@ pub(crate) async fn spawn_dev_container(
 
     if docker_ps.is_none() {
         // Arg this comes too early. Before anything else, I need to parse that JSON
-        //let docker_run_command = create_docker_run_command(devcontainer, config, local_project_directory)
+        let docker_run_command = create_docker_run_command(&devcontainer, local_project_path)?;
     }
 
     // If not, create with docker run
@@ -171,13 +175,12 @@ fn create_docker_query_containers(
 
 fn create_docker_run_command(
     devcontainer: &DevContainer,
-    config: &DockerInspectTodoRename,
     local_project_directory: Arc<&Path>,
 ) -> Result<Command, RenameMeError> {
     let Some(image) = &devcontainer.image else {
         return Err(RenameMeError::UnmappedError);
     };
-    let remote_user = get_remote_user_from_config(config)?;
+    // let remote_user = get_remote_user_from_config(config)?;
 
     let Some(project_directory) = local_project_directory.file_name() else {
         return Err(RenameMeError::UnmappedError);
@@ -345,7 +348,6 @@ mod test {
 
         let docker_run_command = create_docker_run_command(
             &given_devcontainer,
-            &given_docker_config,
             Arc::new(Path::new("/local/project_app")),
         );
 
