@@ -165,6 +165,15 @@ impl StreamingEditFileTool {
         }
     }
 
+    pub fn with_thread(&self, new_thread: WeakEntity<Thread>) -> Self {
+        Self {
+            project: self.project.clone(),
+            thread: new_thread,
+            language_registry: self.language_registry.clone(),
+            templates: self.templates.clone(),
+        }
+    }
+
     fn authorize(
         &self,
         input: &StreamingEditFileToolInput,
@@ -472,6 +481,13 @@ impl AgentTool for StreamingEditFileTool {
             )
         }));
         Ok(())
+    }
+
+    fn rebind_thread(
+        &self,
+        new_thread: gpui::WeakEntity<crate::Thread>,
+    ) -> Option<std::sync::Arc<dyn crate::AnyAgentTool>> {
+        Some(self.with_thread(new_thread).erase())
     }
 }
 

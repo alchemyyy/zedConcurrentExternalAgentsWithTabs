@@ -8,7 +8,6 @@ version = "0.1.0"
 dependencies = [
  "action_log",
  "agent-client-protocol",
- "agent_settings",
  "anyhow",
  "base64 0.22.1",
  "buffer_diff",
@@ -15252,7 +15251,6 @@ dependencies = [
  "serde_json",
  "session",
  "settings",
- "shell_command_parser",
  "strum 0.27.2",
  "telemetry",
  "theme",
