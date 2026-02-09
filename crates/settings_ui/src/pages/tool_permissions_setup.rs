@@ -1,6 +1,9 @@
-use agent::{AgentTool, HARDCODED_SECURITY_RULES, TerminalTool, ToolPermissionDecision};
+use agent::{AgentTool, TerminalTool, ToolPermissionDecision};
 use agent_settings::AgentSettings;
-use gpui::{Focusable, ReadGlobal, ScrollHandle, TextStyleRefinement, point, prelude::*};
+use gpui::{
+    Focusable, HighlightStyle, ReadGlobal, ScrollHandle, StyledText, TextStyleRefinement, point,
+    prelude::*,
+};
 use settings::{Settings as _, SettingsStore, ToolPermissionMode};
 use shell_command_parser::extract_commands;
 use std::sync::Arc;
@@ -9,6 +12,9 @@ use ui::{Banner, ContextMenu, Divider, PopoverMenu, Severity, Tooltip, prelude::
 use util::shell::ShellKind;
 
 use crate::{SettingsWindow, components::SettingsInputField};
+
+const HARDCODED_RULES_DESCRIPTION: &str =
+    "`rm -rf` on `/`, `~`, `$HOME`, `.`, and `..` are always blocked.";
 
 /// Tools that support permission rules
 const TOOLS: &[ToolInfo] = &[
@@ -103,6 +109,37 @@ const fn tool_index(id: &str) -> usize {
         i += 1;
     }
     panic!("tool ID not found in TOOLS array")
+}
+
+/// Parses a string containing backtick-delimited code spans into a `StyledText`
+/// with code background highlights applied to each span.
+fn render_inline_code_markdown(text: &str, window: &Window, cx: &App) -> StyledText {
+    let code_background = cx.theme().colors().surface_background;
+    let mut plain = String::new();
+    let mut highlights: Vec<(std::ops::Range<usize>, HighlightStyle)> = Vec::new();
+    let mut in_code = false;
+    let mut code_start = 0;
+
+    for ch in text.chars() {
+        if ch == '`' {
+            if in_code {
+                highlights.push((
+                    code_start..plain.len(),
+                    HighlightStyle {
+                        background_color: Some(code_background),
+                        ..Default::default()
+                    },
+                ));
+            } else {
+                code_start = plain.len();
+            }
+            in_code = !in_code;
+        } else {
+            plain.push(ch);
+        }
+    }
+
+    StyledText::new(plain).with_default_highlights(&window.text_style(), highlights)
 }
 
 /// Renders the main tool permissions setup page showing a list of tools
@@ -299,7 +336,7 @@ pub(crate) fn render_tool_config_page(
                 ),
         )
         .when(tool.id == TerminalTool::NAME, |this| {
-            this.child(render_hardcoded_security_banner(cx))
+            this.child(render_hardcoded_security_banner(window, cx))
         })
         .child(render_verification_section(tool.id, window, cx))
         .when_some(
@@ -366,38 +403,18 @@ pub(crate) fn render_tool_config_page(
         .into_any_element()
 }
 
-fn render_hardcoded_security_banner(cx: &mut Context<SettingsWindow>) -> AnyElement {
-    let pattern_labels = HARDCODED_SECURITY_RULES.terminal_deny.iter().map(|rule| {
-        h_flex()
-            .gap_1()
-            .child(
-                Icon::new(IconName::Dash)
-                    .color(Color::Hidden)
-                    .size(IconSize::Small),
-            )
-            .child(
-                Label::new(rule.pattern.clone())
-                    .size(LabelSize::Small)
-                    .color(Color::Muted)
-                    .buffer_font(cx),
-            )
-    });
-
+fn render_hardcoded_security_banner(
+    window: &mut Window,
+    cx: &mut Context<SettingsWindow>,
+) -> AnyElement {
     v_flex()
         .mt_3()
         .child(
-            Banner::new().child(
-                v_flex()
-                    .py_1()
-                    .gap_1()
-                    .child(
-                        Label::new(
-                            "The following patterns are always blocked and cannot be overridden:",
-                        )
-                        .size(LabelSize::Small),
-                    )
-                    .children(pattern_labels),
-            ),
+            Banner::new().child(div().py_1().text_sm().child(render_inline_code_markdown(
+                HARDCODED_RULES_DESCRIPTION,
+                window,
+                cx,
+            ))),
         )
         .into_any_element()
 }
@@ -440,8 +457,17 @@ fn render_verification_section(
     };
 
     let default_mode = get_tool_rules(tool_id, cx).default_mode;
+    let is_hardcoded_denial = matches!(
+        &decision,
+        Some(ToolPermissionDecision::Deny(reason))
+            if reason.contains("built-in security rule")
+    );
     let denial_reason = match &decision {
-        Some(ToolPermissionDecision::Deny(reason)) if !reason.is_empty() => Some(reason.clone()),
+        Some(ToolPermissionDecision::Deny(reason))
+            if !reason.is_empty() && !is_hardcoded_denial =>
+        {
+            Some(reason.clone())
+        }
         _ => None,
     };
     let (authoritative_mode, patterns_agree) = match &decision {
@@ -534,7 +560,13 @@ fn render_verification_section(
                         }
                     })
                     .when(!patterns_agree, |this| {
-                        if let Some(reason) = &denial_reason {
+                        if is_hardcoded_denial {
+                            this.child(
+                                div()
+                                    .text_xs()
+                                    .child(render_inline_code_markdown(HARDCODED_RULES_DESCRIPTION, window, cx)),
+                            )
+                        } else if let Some(reason) = &denial_reason {
                             this.child(
                                 Label::new(format!("Denied: {}", reason))
                                     .size(LabelSize::XSmall)
@@ -551,8 +583,15 @@ fn render_verification_section(
                         }
                     })
                     .child(render_verdict_label(mode))
+                    .when(is_hardcoded_denial && patterns_agree, |this| {
+                        this.child(
+                            div()
+                                .text_xs()
+                                .child(render_inline_code_markdown(HARDCODED_RULES_DESCRIPTION, window, cx)),
+                        )
+                    })
                     .when_some(
-                        denial_reason.filter(|_| patterns_agree),
+                        denial_reason.filter(|_| patterns_agree && !is_hardcoded_denial),
                         |this, reason| {
                             this.child(
                                 Label::new(format!("Reason: {}", reason))
