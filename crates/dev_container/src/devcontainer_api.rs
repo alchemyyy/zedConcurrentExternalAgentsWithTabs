@@ -35,11 +35,11 @@ impl DevContainerConfig {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct DevContainerUp {
-    _outcome: String,
-    container_id: String,
-    remote_user: String,
-    remote_workspace_folder: String,
+pub(crate) struct DevContainerUp {
+    pub(crate) _outcome: String,
+    pub(crate) container_id: String,
+    pub(crate) remote_user: String,
+    pub(crate) remote_workspace_folder: String,
 }
 
 #[derive(Debug, Deserialize)]

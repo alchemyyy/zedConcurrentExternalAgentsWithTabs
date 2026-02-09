@@ -40,6 +40,7 @@ use http::Request;
 use http_client::{AsyncBody, HttpClient};
 
 mod devcontainer_api;
+mod model;
 
 use devcontainer_api::read_devcontainer_configuration_for_project;
 
