@@ -14,7 +14,7 @@ use any_vec::AnyVec;
 use collections::HashMap;
 use editor::{
     DisplayPoint, Editor, EditorSettings, MultiBufferOffset, SplitDiffFeatureFlag,
-    SplittableEditor, ToggleSplitDiff,
+    SplittableEditor, ToggleLinkedCursors, ToggleSplitDiff,
     actions::{Backtab, FoldAll, Tab, ToggleFoldAll, UnfoldAll},
 };
 use feature_flags::FeatureFlagAppExt as _;
@@ -146,6 +146,29 @@ impl Render for BufferSearchBar {
                                     })
                                 }),
                         )
+                        .when(is_split, |this| {
+                            let linked_cursors = splittable_editor.read(cx).linked_cursors();
+                            let focus_handle = focus_handle.clone();
+                            this.child(
+                                IconButton::new("linked-cursors", IconName::Link)
+                                    .shape(IconButtonShape::Square)
+                                    .toggle_state(linked_cursors)
+                                    .tooltip(|_, cx| {
+                                        Tooltip::for_action(
+                                            "Linked Cursor Mode",
+                                            &ToggleLinkedCursors,
+                                            cx,
+                                        )
+                                    })
+                                    .on_click(move |_, window, cx| {
+                                        focus_handle.focus(window, cx);
+                                        window.dispatch_action(
+                                            ToggleLinkedCursors.boxed_clone(),
+                                            cx,
+                                        );
+                                    }),
+                            )
+                        })
                 })
         } else {
             None
