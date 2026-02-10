@@ -106,6 +106,8 @@ pub enum NotificationSource {
     Task,
     /// CLI installation notifications
     Cli,
+    /// REPL/Jupyter kernel notifications
+    Repl,
     /// Generic system notifications (fallback)
     #[default]
     System,
@@ -130,6 +132,7 @@ impl NotificationSource {
             NotificationSource::Editor => "editor",
             NotificationSource::Task => "task",
             NotificationSource::Cli => "cli",
+            NotificationSource::Repl => "repl",
             NotificationSource::System => "system",
         }
     }
