@@ -112,6 +112,7 @@ impl Default for AgentProfileId {
 
 #[derive(Clone, Debug, Default)]
 pub struct ToolPermissions {
+    /// Global default permission when no tool-specific rules or patterns match.
     pub default: ToolPermissionMode,
     pub tools: collections::HashMap<Arc<str>, ToolRules>,
 }
@@ -481,6 +482,7 @@ fn compile_tool_permissions(content: Option<settings::ToolPermissionsContent>) -
             }
 
             let rules = ToolRules {
+                // Preserve tool-specific default; None means fall back to global default at decision time
                 default: rules_content.default,
                 always_allow,
                 always_deny,
