@@ -169,7 +169,7 @@ impl NotificationTelemetry {
             .unwrap_or((None, false, None));
 
         Self {
-            notification_type: "error",
+            notification_type: "lsp",
             source: "lsp",
             lsp_name,
             level,
