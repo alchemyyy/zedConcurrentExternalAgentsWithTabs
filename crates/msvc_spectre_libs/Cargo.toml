@@ -1,0 +1,6 @@
+[package]
+name = "msvc_spectre_libs"
+version = "0.1.3"
+
+[features]
+error = []

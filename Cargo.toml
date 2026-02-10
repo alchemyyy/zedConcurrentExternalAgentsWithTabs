@@ -802,6 +802,7 @@ notify = { git = "https://github.com/zed-industries/notify.git", rev = "6c550ac3
 notify-types = { git = "https://github.com/zed-industries/notify.git", rev = "6c550ac3c56cbd143c57ea6390e197af9d790908" }
 windows-capture = { git = "https://github.com/zed-industries/windows-capture.git", rev = "f0d6c1b6691db75461b732f6d5ff56eed002eeb9" }
 calloop = { git = "https://github.com/zed-industries/calloop" }
+msvc_spectre_libs = { path = "crates/msvc_spectre_libs" }
 
 [profile.dev]
 split-debuginfo = "unpacked"
