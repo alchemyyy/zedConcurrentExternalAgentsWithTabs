@@ -70,7 +70,6 @@ use {
         time::Duration,
     },
     util::ResultExt as _,
-    watch,
     workspace::{AppState, MultiWorkspace, Workspace, WorkspaceId},
     zed_actions::OpenSettingsAt,
 };
