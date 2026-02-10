@@ -160,9 +160,36 @@ Use the `agent_ui_font_size` setting to change the font size of rendered agent r
 
 > Editors in the Agent Panel—whether that is the main message textarea or previous messages—use monospace fonts and therefore, are controlled by the `buffer_font_size` setting, which is defined globally in your `settings.json`.
 
-### Tool Permissions
+### Default Tool Permissions
 
-For granular control over individual tool actions, you can configure regex-based rules that auto-approve, auto-deny, or always require confirmation for specific inputs.
+The `agent.tool_permissions.default` setting controls the baseline tool approval behavior for Zed's native agent:
+
+- `"confirm"` (default) — Prompts for approval before running any tool action
+- `"allow"` — Auto-approves tool actions without prompting
+- `"deny"` — Blocks all tool actions
+
+```json [settings]
+{
+  "agent": {
+    "tool_permissions": {
+      "default": "confirm"
+    }
+  }
+}
+```
+
+Even with `"default": "allow"`, per-tool `always_deny` and `always_confirm` patterns are still respected, so you can auto-approve most actions while keeping guardrails on dangerous or sensitive ones.
+
+### Per-tool Permission Rules {#per-tool-permission-rules}
+
+For granular control over individual tool actions, use the `tools` key inside `tool_permissions` to configure regex-based rules that auto-approve, auto-deny, or always require confirmation for specific inputs.
+
+Each tool entry supports the following keys:
+
+- `default` — Fallback when no patterns match: `"confirm"`, `"allow"`, or `"deny"`
+- `always_allow` — Array of patterns that auto-approve matching actions
+- `always_deny` — Array of patterns that block matching actions immediately
+- `always_confirm` — Array of patterns that always prompt for confirmation
 
 ```json [settings]
 {
@@ -172,8 +199,18 @@ For granular control over individual tool actions, you can configure regex-based
       "tools": {
         "terminal": {
           "default": "confirm",
-          "always_allow": [{ "pattern": "^cargo\\s+(build|test)" }],
-          "always_deny": [{ "pattern": "rm\\s+-rf\\s+" }]
+          "always_allow": [
+            { "pattern": "^cargo\\s+(build|test|check)" },
+            { "pattern": "^git\\s+(status|log|diff)" }
+          ],
+          "always_deny": [{ "pattern": "rm\\s+-rf\\s+(/|~)" }],
+          "always_confirm": [{ "pattern": "sudo\\s" }]
+        },
+        "edit_file": {
+          "always_deny": [
+            { "pattern": "\\.env" },
+            { "pattern": "\\.(pem|key)$" }
+          ]
         }
       }
     }
@@ -181,7 +218,56 @@ For granular control over individual tool actions, you can configure regex-based
 }
 ```
 
-See the [Tool Permissions](./tool-permissions.md) documentation for complete details on configuring per-tool rules.
+#### Pattern Precedence
+
+When evaluating a tool action, rules are checked in the following order (highest priority first):
+
+1. **Built-in security rules** — Hardcoded protections (e.g., `rm -rf /`) that cannot be overridden
+2. **`always_deny`** — Blocks matching actions immediately
+3. **`always_confirm`** — Requires confirmation for matching actions
+4. **`always_allow`** — Auto-approves matching actions. For the terminal tool with chained commands (e.g., `echo hello && rm file`), **all** sub-commands must match an `always_allow` pattern
+5. **Tool-specific `default`** — Per-tool fallback when no patterns match (e.g., `tools.terminal.default`)
+6. **Global `default`** — Falls back to `tool_permissions.default`
+
+#### Case Sensitivity
+
+Patterns are **case-insensitive** by default. To make a pattern case-sensitive, set `case_sensitive` to `true`:
+
+```json [settings]
+{
+  "pattern": "^Makefile$",
+  "case_sensitive": true
+}
+```
+
+#### `copy_path` and `move_path` Patterns
+
+For the `copy_path` and `move_path` tools, patterns are matched independently against both the source and destination paths. A `deny` or `confirm` match on **either** path takes effect. For `always_allow`, **both** paths must match for auto-approval.
+
+#### MCP Tool Permissions
+
+MCP tools use the key format `mcp:<server_name>:<tool_name>` in the `tools` configuration. For example:
+
+```json [settings]
+{
+  "agent": {
+    "tool_permissions": {
+      "tools": {
+        "mcp:github:create_issue": {
+          "default": "confirm"
+        },
+        "mcp:github:create_pull_request": {
+          "default": "deny"
+        }
+      }
+    }
+  }
+}
+```
+
+The `default` key on each MCP tool entry is the primary mechanism for controlling MCP tool permissions. Pattern-based rules (`always_allow`, `always_deny`, `always_confirm`) match against an empty string for MCP tools, so most patterns won't match — use the tool-level `default` instead.
+
+See the [Tool Permissions](./tool-permissions.md) documentation for more examples and complete details.
 
 ### Single-file Review
 

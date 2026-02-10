@@ -195,6 +195,8 @@ impl CompiledRegex {
 pub const HARDCODED_SECURITY_DENIAL_MESSAGE: &str = "Blocked by built-in security rule. This operation is considered too \
      harmful to be allowed, and cannot be overridden by settings.";
 
+/// Security rules that are always enforced and cannot be overridden by any setting.
+/// These protect against catastrophic operations like wiping filesystems.
 pub struct HardcodedSecurityRules {
     pub terminal_deny: Vec<CompiledRegex>,
 }
@@ -205,26 +207,31 @@ pub static HARDCODED_SECURITY_RULES: LazyLock<HardcodedSecurityRules> = LazyLock
 
     HardcodedSecurityRules {
         terminal_deny: vec![
+            // Recursive deletion of root - "rm -rf /", "rm -rf /*"
             CompiledRegex::new(
                 &format!(r"\brm\s+{FLAGS}(--\s+)?/\*?{TRAILING_FLAGS}$"),
                 false,
             )
             .expect("hardcoded regex should compile"),
+            // Recursive deletion of home via tilde - "rm -rf ~", "rm -rf ~/"
             CompiledRegex::new(
                 &format!(r"\brm\s+{FLAGS}(--\s+)?~/?\*?{TRAILING_FLAGS}$"),
                 false,
             )
             .expect("hardcoded regex should compile"),
+            // Recursive deletion of home via env var - "rm -rf $HOME", "rm -rf ${HOME}"
             CompiledRegex::new(
                 &format!(r"\brm\s+{FLAGS}(--\s+)?(\$HOME|\$\{{HOME\}})/?(\*)?{TRAILING_FLAGS}$"),
                 false,
             )
             .expect("hardcoded regex should compile"),
+            // Recursive deletion of current directory - "rm -rf .", "rm -rf ./"
             CompiledRegex::new(
                 &format!(r"\brm\s+{FLAGS}(--\s+)?\./?\*?{TRAILING_FLAGS}$"),
                 false,
             )
             .expect("hardcoded regex should compile"),
+            // Recursive deletion of parent directory - "rm -rf ..", "rm -rf ../"
             CompiledRegex::new(
                 &format!(r"\brm\s+{FLAGS}(--\s+)?\.\./?\*?{TRAILING_FLAGS}$"),
                 false,
@@ -507,6 +514,14 @@ fn compile_regex_rules(
     let mut errors = Vec::new();
 
     for rule in rules {
+        if rule.pattern.is_empty() {
+            errors.push(InvalidRegexPattern {
+                pattern: rule.pattern,
+                rule_type: rule_type.to_string(),
+                error: "empty regex patterns are not allowed".to_string(),
+            });
+            continue;
+        }
         let case_sensitive = rule.case_sensitive.unwrap_or(false);
         match CompiledRegex::try_new(&rule.pattern, case_sensitive) {
             Ok(regex) => compiled.push(regex),
@@ -527,6 +542,7 @@ fn compile_regex_rules(
 mod tests {
     use super::*;
     use serde_json::json;
+    use settings::ToolPermissionMode;
     use settings::ToolPermissionsContent;
 
     #[test]
@@ -598,6 +614,7 @@ mod tests {
     fn test_tool_permissions_empty() {
         let permissions = compile_tool_permissions(None);
         assert!(permissions.tools.is_empty());
+        assert_eq!(permissions.default, ToolPermissionMode::Confirm);
     }
 
     #[test]
@@ -922,5 +939,82 @@ mod tests {
             terminal.default, None,
             "default should be None when not specified"
         );
+    }
+
+    #[test]
+    fn test_empty_regex_pattern_is_invalid() {
+        let json = json!({
+            "tools": {
+                "terminal": {
+                    "always_allow": [
+                        { "pattern": "" }
+                    ],
+                    "always_deny": [
+                        { "case_sensitive": true }
+                    ],
+                    "always_confirm": [
+                        { "pattern": "" },
+                        { "pattern": "valid_pattern" }
+                    ]
+                }
+            }
+        });
+
+        let content: ToolPermissionsContent = serde_json::from_value(json).unwrap();
+        let permissions = compile_tool_permissions(Some(content));
+
+        let terminal = permissions.tools.get("terminal").unwrap();
+
+        assert_eq!(terminal.always_allow.len(), 0);
+        assert_eq!(terminal.always_deny.len(), 0);
+        assert_eq!(terminal.always_confirm.len(), 1);
+        assert!(terminal.always_confirm[0].is_match("valid_pattern"));
+
+        assert_eq!(terminal.invalid_patterns.len(), 3);
+        for invalid in &terminal.invalid_patterns {
+            assert_eq!(invalid.pattern, "");
+            assert!(invalid.error.contains("empty"));
+        }
+    }
+
+    #[test]
+    fn test_default_json_tool_permissions_parse() {
+        let default_json = include_str!("../../../assets/settings/default.json");
+        let value: serde_json_lenient::Value = serde_json_lenient::from_str(default_json).unwrap();
+        let agent = value
+            .get("agent")
+            .expect("default.json should have 'agent' key");
+        let tool_permissions_value = agent
+            .get("tool_permissions")
+            .expect("agent should have 'tool_permissions' key");
+
+        let content: ToolPermissionsContent =
+            serde_json_lenient::from_value(tool_permissions_value.clone()).unwrap();
+        let permissions = compile_tool_permissions(Some(content));
+
+        assert_eq!(permissions.default, ToolPermissionMode::Confirm);
+
+        assert!(
+            permissions.tools.is_empty(),
+            "default.json should not have any active tool-specific rules, found: {:?}",
+            permissions.tools.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_tool_permissions_explicit_global_default() {
+        let json_allow = json!({
+            "default": "allow"
+        });
+        let content: ToolPermissionsContent = serde_json::from_value(json_allow).unwrap();
+        let permissions = compile_tool_permissions(Some(content));
+        assert_eq!(permissions.default, ToolPermissionMode::Allow);
+
+        let json_deny = json!({
+            "default": "deny"
+        });
+        let content: ToolPermissionsContent = serde_json::from_value(json_deny).unwrap();
+        let permissions = compile_tool_permissions(Some(content));
+        assert_eq!(permissions.default, ToolPermissionMode::Deny);
     }
 }

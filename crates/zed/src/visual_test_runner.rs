@@ -354,7 +354,7 @@ fn run_visual_tests(project_path: PathBuf, update_baseline: bool) -> Result<()> 
                 None
             }
         })
-        .ok()
+        .log_err()
         .flatten();
 
     if let Some(task) = open_file_task {
@@ -1018,7 +1018,7 @@ fn run_breakpoint_hover_visual_tests(
                 None
             }
         })
-        .ok()
+        .log_err()
         .flatten();
 
     if let Some(task) = open_file_task {
@@ -1588,7 +1588,7 @@ import { AiPaneTabContext } from 'context';
                 None
             }
         })
-        .ok()
+        .log_err()
         .flatten();
 
     if let Some(task) = open_file_task {

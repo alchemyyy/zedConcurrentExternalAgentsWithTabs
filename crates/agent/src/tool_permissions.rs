@@ -754,12 +754,29 @@ mod tests {
             .global_default(ToolPermissionMode::Allow)
             .is_allow();
     }
+    #[test]
+    fn allow_no_match_tool_confirm_overrides_global_allow() {
+        t("python x.py")
+            .allow(&[pattern("cargo")])
+            .mode(ToolPermissionMode::Confirm)
+            .global_default(ToolPermissionMode::Allow)
+            .is_confirm();
+    }
+    #[test]
+    fn allow_no_match_tool_allow_overrides_global_confirm() {
+        t("python x.py")
+            .allow(&[pattern("cargo")])
+            .mode(ToolPermissionMode::Allow)
+            .global_default(ToolPermissionMode::Confirm)
+            .is_allow();
+    }
 
     // deny pattern matches (using commands that aren't blocked by hardcoded rules)
     #[test]
     fn deny_blocks() {
         t("rm -rf ./temp").deny(&["rm\\s+-rf"]).is_deny();
     }
+    // global default: allow does NOT bypass user-configured deny rules
     #[test]
     fn deny_not_bypassed_by_global_default_allow() {
         t("rm -rf ./temp")
@@ -793,6 +810,7 @@ mod tests {
             .confirm(&[pattern("sudo")])
             .is_confirm();
     }
+    // global default: allow does NOT bypass user-configured confirm rules
     #[test]
     fn global_default_allow_does_not_override_confirm_pattern() {
         t("sudo reboot")
@@ -873,6 +891,7 @@ mod tests {
     fn default_deny() {
         t("python x.py").mode(ToolPermissionMode::Deny).is_deny();
     }
+    // Tool-specific default takes precedence over global default
     #[test]
     fn tool_default_deny_overrides_global_allow() {
         t("python x.py")
@@ -881,6 +900,7 @@ mod tests {
             .is_deny();
     }
 
+    // Tool-specific default takes precedence over global default
     #[test]
     fn tool_default_confirm_overrides_global_allow() {
         t("x")
@@ -1035,7 +1055,7 @@ mod tests {
             default: ToolPermissionMode::Confirm,
             tools,
         };
-        // Invalid patterns block the tool
+        // Invalid patterns block the tool regardless of other settings
         assert!(matches!(
             ToolPermissionDecision::from_input(
                 TerminalTool::NAME,

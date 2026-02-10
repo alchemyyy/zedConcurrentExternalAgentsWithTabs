@@ -960,23 +960,23 @@
     ],
     // Permission rules for tool actions.
     //
-    // The "default" setting applies to both the native Zed agent and external
-    // agent servers (e.g. Claude Code) that don't define their own permission
-    // modes. For external agents that do define their own permission modes,
+    // The "default" setting applies when no tool-specific rules match.
+    // For external agents that define their own permission modes,
     // "deny" and "confirm" still take precedence — the external agent's
     // permission system is only used when Zed would allow the action.
     //
-    // Per-tool regex patterns ("tools" below) only apply to the native Zed
-    // agent, since external agents handle tool input differently.
+    // Per-tool regex patterns ("tools" below) match against tool input text
+    // (commands, paths, URLs, etc.). For `copy_path` and `move_path`,
+    // patterns are matched independently against each path (source and
+    // destination).
     "tool_permissions": {
       // Global default permission when no tool-specific rules match.
       // "allow" - Auto-approve without prompting
       // "deny" - Auto-reject
       // "confirm" - Always prompt (default)
       "default": "confirm",
-      // Per-tool permission rules. Regex patterns only apply to the native Zed
-      // agent, since external agents handle tool input differently. The per-tool
-      // "default" also applies to MCP tools.
+      // Per-tool permission rules. Regex patterns match against tool input text.
+      // The per-tool "default" also applies to MCP tools.
       // Each tool can have its own default and regex patterns.
       "tools": {
         // "terminal": {

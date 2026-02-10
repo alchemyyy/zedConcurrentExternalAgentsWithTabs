@@ -179,7 +179,7 @@ Zed's Agent Panel provides the `agent.tool_permissions.default` setting to contr
 
 You can change this in either your `settings.json` or via the Agent Panel's settings view.
 
-For more granular control, you can configure per-tool permission rules using regex patterns to auto-approve trusted actions, block dangerous ones, or always require confirmation for sensitive operations. See [Tool Permissions](./tool-permissions.md) for details.
+Even with `"default": "allow"`, per-tool `always_deny` and `always_confirm` patterns are still respected — so you can auto-approve most actions while blocking or gating specific ones. For the `copy_path` and `move_path` tools, patterns are matched independently against both the source and destination paths. See [Per-tool Permission Rules](./agent-settings.md#per-tool-permission-rules) for details.
 
 When the agent requests permission for an action, the confirmation dialog includes options to allow or deny once, as well as "Always allow" and "Always deny" options that automatically add the appropriate pattern to your settings.
 

@@ -118,10 +118,13 @@ pub struct AgentSettingsContent {
     /// Per-tool permission rules for granular control over which tool actions
     /// require confirmation.
     ///
-    /// The global `default` applies to both the native Zed agent and external
-    /// agent servers (e.g. Claude Code) that don't define their own permission
-    /// modes. Per-tool regex patterns (`always_allow`, `always_deny`,
-    /// `always_confirm`) only apply to the native Zed agent.
+    /// The global `default` applies when no tool-specific rules match.
+    /// For external agent servers (e.g. Claude Code) that define their own
+    /// permission modes, "deny" and "confirm" still take precedence — the
+    /// external agent's permission system is only used when Zed would allow
+    /// the action. Per-tool regex patterns (`always_allow`, `always_deny`,
+    /// `always_confirm`) match against the tool's text input (command, path,
+    /// URL, etc.).
     pub tool_permissions: Option<ToolPermissionsContent>,
 }
 
@@ -541,6 +544,8 @@ pub struct ToolRulesContent {
 
     /// Regexes for inputs to auto-approve.
     /// For terminal: matches command. For file tools: matches path. For fetch: matches URL.
+    /// For `copy_path` and `move_path`, patterns are matched independently against each
+    /// path (source and destination).
     /// Patterns accumulate across settings layers (user, project, profile) and cannot be
     /// removed by a higher-priority layer—only new patterns can be added.
     /// Default: []
@@ -548,6 +553,8 @@ pub struct ToolRulesContent {
 
     /// Regexes for inputs to auto-reject.
     /// **SECURITY**: These take precedence over ALL other rules, across ALL settings layers.
+    /// For `copy_path` and `move_path`, patterns are matched independently against each
+    /// path (source and destination).
     /// Patterns accumulate across settings layers (user, project, profile) and cannot be
     /// removed by a higher-priority layer—only new patterns can be added.
     /// Default: []
@@ -555,6 +562,8 @@ pub struct ToolRulesContent {
 
     /// Regexes for inputs that must always prompt.
     /// Takes precedence over always_allow but not always_deny.
+    /// For `copy_path` and `move_path`, patterns are matched independently against each
+    /// path (source and destination).
     /// Patterns accumulate across settings layers (user, project, profile) and cannot be
     /// removed by a higher-priority layer—only new patterns can be added.
     /// Default: []
