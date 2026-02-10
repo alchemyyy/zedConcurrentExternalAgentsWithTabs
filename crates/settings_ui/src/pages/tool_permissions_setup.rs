@@ -1,7 +1,11 @@
-use agent::{AgentTool, TerminalTool, ToolPermissionDecision, extract_commands};
-use agent_settings::{AgentSettings, HARDCODED_SECURITY_RULES};
-use gpui::{Focusable, ReadGlobal, ScrollHandle, TextStyleRefinement, point, prelude::*};
+use agent::{AgentTool, TerminalTool, ToolPermissionDecision};
+use agent_settings::AgentSettings;
+use gpui::{
+    Focusable, HighlightStyle, ReadGlobal, ScrollHandle, StyledText, TextStyleRefinement, point,
+    prelude::*,
+};
 use settings::{Settings as _, SettingsStore, ToolPermissionMode};
+use shell_command_parser::extract_commands;
 use std::sync::Arc;
 use theme::ThemeSettings;
 use ui::{Banner, ContextMenu, Divider, PopoverMenu, Severity, Tooltip, prelude::*};
@@ -9,6 +13,10 @@ use util::ResultExt as _;
 use util::shell::ShellKind;
 
 use crate::{SettingsWindow, components::SettingsInputField};
+
+const HARDCODED_RULES_DESCRIPTION: &str =
+    "`rm -rf` commands are always blocked when run on `$HOME`, `~`, `.`, `..`, or `/`";
+const SETTINGS_DISCLAIMER: &str = "Note: custom tool permissions only apply to the Zed native agent and don’t extend to external agents connected through the Agent Client Protocol (ACP).";
 
 /// Tools that support permission rules
 const TOOLS: &[ToolInfo] = &[
@@ -111,6 +119,37 @@ const fn tool_index(id: &str) -> usize {
     panic!("tool ID not found in TOOLS array")
 }
 
+/// Parses a string containing backtick-delimited code spans into a `StyledText`
+/// with code background highlights applied to each span.
+fn render_inline_code_markdown(text: &str, cx: &App) -> StyledText {
+    let code_background = cx.theme().colors().surface_background;
+    let mut plain = String::new();
+    let mut highlights: Vec<(std::ops::Range<usize>, HighlightStyle)> = Vec::new();
+    let mut in_code = false;
+    let mut code_start = 0;
+
+    for ch in text.chars() {
+        if ch == '`' {
+            if in_code {
+                highlights.push((
+                    code_start..plain.len(),
+                    HighlightStyle {
+                        background_color: Some(code_background),
+                        ..Default::default()
+                    },
+                ));
+            } else {
+                code_start = plain.len();
+            }
+            in_code = !in_code;
+        } else {
+            plain.push(ch);
+        }
+    }
+
+    StyledText::new(plain).with_highlights(highlights)
+}
+
 /// Renders the main tool permissions setup page showing a list of tools
 pub(crate) fn render_tool_permissions_setup_page(
     settings_window: &SettingsWindow,
@@ -123,9 +162,6 @@ pub(crate) fn render_tool_permissions_setup_page(
         .enumerate()
         .map(|(i, tool)| render_tool_list_item(settings_window, tool, i, window, cx))
         .collect();
-
-    let page_description =
-        "Configure regex patterns to control which tool actions require confirmation.";
 
     let settings = AgentSettings::get_global(cx);
     let global_default = settings.tool_permissions.default;
@@ -157,15 +193,16 @@ pub(crate) fn render_tool_permissions_setup_page(
         .pb_16()
         .overflow_y_scroll()
         .track_scroll(scroll_handle)
-        .child(Label::new("Tool Permission Rules").size(LabelSize::Large))
         .child(
-            Label::new(page_description)
-                .size(LabelSize::Small)
-                .color(Color::Muted),
+            Banner::new().child(
+                Label::new(SETTINGS_DISCLAIMER)
+                    .size(LabelSize::Small)
+                    .color(Color::Muted)
+                    .mt_0p5(),
+            ),
         )
         .child(
             v_flex()
-                .mt_2()
                 .child(render_global_default_mode_section(global_default))
                 .child(Divider::horizontal())
                 .children(tool_items.into_iter().enumerate().flat_map(|(i, item)| {
@@ -245,7 +282,7 @@ fn render_tool_list_item(
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.push_dynamic_sub_page(
                         tool_name,
-                        "Configure Tool Rules",
+                        "Tool Permissions",
                         None,
                         render_fn,
                         window,
@@ -389,39 +426,24 @@ pub(crate) fn render_tool_config_page(
         .into_any_element()
 }
 
-fn render_hardcoded_security_banner(cx: &mut Context<SettingsWindow>) -> AnyElement {
-    let pattern_labels = HARDCODED_SECURITY_RULES.terminal_deny.iter().map(|rule| {
-        h_flex()
-            .gap_1()
-            .child(
-                Icon::new(IconName::Dash)
-                    .color(Color::Hidden)
-                    .size(IconSize::Small),
-            )
-            .child(
-                Label::new(rule.pattern.clone())
-                    .size(LabelSize::Small)
-                    .color(Color::Muted)
-                    .buffer_font(cx),
-            )
-    });
+fn render_hardcoded_rules(smaller_font_size: bool, cx: &App) -> AnyElement {
+    div()
+        .map(|this| {
+            if smaller_font_size {
+                this.text_xs()
+            } else {
+                this.text_sm()
+            }
+        })
+        .text_color(cx.theme().colors().text_muted)
+        .child(render_inline_code_markdown(HARDCODED_RULES_DESCRIPTION, cx))
+        .into_any_element()
+}
 
-    v_flex()
+fn render_hardcoded_security_banner(cx: &mut Context<SettingsWindow>) -> AnyElement {
+    div()
         .mt_3()
-        .child(
-            Banner::new().child(
-                v_flex()
-                    .py_1()
-                    .gap_1()
-                    .child(
-                        Label::new(
-                            "The following patterns are always blocked and cannot be overridden:",
-                        )
-                        .size(LabelSize::Small),
-                    )
-                    .children(pattern_labels),
-            ),
-        )
+        .child(Banner::new().child(render_hardcoded_rules(false, cx)))
         .into_any_element()
 }
 
@@ -460,8 +482,17 @@ fn render_verification_section(
     };
 
     let default_mode = get_tool_rules(tool_id, cx).default;
+    let is_hardcoded_denial = matches!(
+        &decision,
+        Some(ToolPermissionDecision::Deny(reason))
+            if reason.contains("built-in security rule")
+    );
     let denial_reason = match &decision {
-        Some(ToolPermissionDecision::Deny(reason)) if !reason.is_empty() => Some(reason.clone()),
+        Some(ToolPermissionDecision::Deny(reason))
+            if !reason.is_empty() && !is_hardcoded_denial =>
+        {
+            Some(reason.clone())
+        }
         _ => None,
     };
     let (authoritative_mode, patterns_agree) = match &decision {
@@ -484,7 +515,7 @@ fn render_verification_section(
         None => (None, true),
     };
 
-    let theme_colors = cx.theme().colors();
+    let color = cx.theme().colors();
 
     v_flex()
         .mt_3()
@@ -494,10 +525,10 @@ fn render_verification_section(
             v_flex()
                 .p_2p5()
                 .gap_1p5()
-                .bg(theme_colors.surface_background.opacity(0.15))
+                .bg(color.surface_background.opacity(0.15))
                 .border_1()
                 .border_dashed()
-                .border_color(theme_colors.border_variant)
+                .border_color(color.border_variant)
                 .rounded_sm()
                 .child(
                     Label::new("Test Your Rules")
@@ -511,8 +542,8 @@ fn render_verification_section(
                         .px_2()
                         .rounded_md()
                         .border_1()
-                        .border_color(theme_colors.border)
-                        .bg(theme_colors.editor_background)
+                        .border_color(color.border)
+                        .bg(color.editor_background)
                         .track_focus(&focus_handle)
                         .child(editor),
                 )
@@ -529,7 +560,9 @@ fn render_verification_section(
                         }
                     })
                     .when(!patterns_agree, |this| {
-                        if let Some(reason) = &denial_reason {
+                        if is_hardcoded_denial {
+                            this.child(render_hardcoded_rules(true, cx))
+                        } else if let Some(reason) = &denial_reason {
                             this.child(
                                 Label::new(format!("Denied: {}", reason))
                                     .size(LabelSize::XSmall)
@@ -545,9 +578,12 @@ fn render_verification_section(
                             )
                         }
                     })
+                    .when(is_hardcoded_denial && patterns_agree, |this| {
+                        this.child(render_hardcoded_rules(true, cx))
+                    })
                     .child(render_verdict_label(mode))
                     .when_some(
-                        denial_reason.filter(|_| patterns_agree),
+                        denial_reason.filter(|_| patterns_agree && !is_hardcoded_denial),
                         |this, reason| {
                             this.child(
                                 Label::new(format!("Reason: {}", reason))
@@ -1323,7 +1359,6 @@ fn set_default_mode(tool_name: &str, mode: ToolPermissionMode, cx: &mut App) {
     });
 }
 
-// Macro to generate render functions for each tool
 macro_rules! tool_config_page_fn {
     ($fn_name:ident, $tool_id:literal) => {
         pub fn $fn_name(
@@ -1332,7 +1367,6 @@ macro_rules! tool_config_page_fn {
             window: &mut Window,
             cx: &mut Context<SettingsWindow>,
         ) -> AnyElement {
-            // Evaluated at compile time — fails to compile if $tool_id is not in TOOLS.
             const INDEX: usize = tool_index($tool_id);
             render_tool_config_page(&TOOLS[INDEX], settings_window, scroll_handle, window, cx)
         }

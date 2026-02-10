@@ -482,13 +482,6 @@ impl AgentTool for StreamingEditFileTool {
         }));
         Ok(())
     }
-
-    fn rebind_thread(
-        &self,
-        new_thread: gpui::WeakEntity<crate::Thread>,
-    ) -> Option<std::sync::Arc<dyn crate::AnyAgentTool>> {
-        Some(self.with_thread(new_thread).erase())
-    }
 }
 
 fn apply_edits(
