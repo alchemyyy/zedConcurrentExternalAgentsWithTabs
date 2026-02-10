@@ -3017,7 +3017,13 @@ impl MultiBuffer {
         if !diffs.is_empty() {
             let mut diffs_to_add = Vec::new();
             for (id, diff) in diffs {
-                if diff.is_inverted || buffer_diff.get(id).is_none() {
+                if buffer_diff.get(id).is_none_or(|existing_diff| {
+                    diff.diff
+                        .read(cx)
+                        .base_text(cx)
+                        .version()
+                        .changed_since(existing_diff.base_text().version())
+                }) {
                     if diffs_to_add.capacity() == 0 {
                         // we'd rather overallocate than reallocate as buffer diffs are quite big
                         // meaning re-allocations will be fairly expensive
