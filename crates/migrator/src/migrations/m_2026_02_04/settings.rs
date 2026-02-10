@@ -8,10 +8,51 @@ pub fn migrate_tool_permission_defaults(value: &mut Value) -> Result<()> {
 }
 
 fn migrate_one(obj: &mut serde_json::Map<String, Value>) -> Result<()> {
+    // Check if always_allow_tool_actions was true BEFORE the migration removes it.
+    // We need this to also set default modes for ACP agent servers (Claude Code, Codex)
+    // so that their auto-accept behavior is preserved.
+    let had_always_allow = obj
+        .get("agent")
+        .and_then(|a| a.get("always_allow_tool_actions"))
+        .and_then(|v| v.as_bool())
+        == Some(true);
+
     if let Some(agent) = obj.get_mut("agent") {
         migrate_agent_with_profiles(agent)?;
     }
+
+    if had_always_allow {
+        set_agent_server_default_mode(obj, "claude", "bypassPermissions");
+        set_agent_server_default_mode(obj, "codex", "full-access");
+    }
+
     Ok(())
+}
+
+fn set_agent_server_default_mode(
+    obj: &mut serde_json::Map<String, Value>,
+    server_name: &str,
+    mode: &str,
+) {
+    let agent_servers = obj
+        .entry("agent_servers")
+        .or_insert_with(|| Value::Object(Default::default()));
+
+    let Some(agent_servers_object) = agent_servers.as_object_mut() else {
+        return;
+    };
+
+    let server = agent_servers_object
+        .entry(server_name)
+        .or_insert_with(|| Value::Object(Default::default()));
+
+    let Some(server_object) = server.as_object_mut() else {
+        return;
+    };
+
+    if !server_object.contains_key("default_mode") {
+        server_object.insert("default_mode".to_string(), Value::String(mode.to_string()));
+    }
 }
 
 fn migrate_agent_with_profiles(agent: &mut Value) -> Result<()> {
