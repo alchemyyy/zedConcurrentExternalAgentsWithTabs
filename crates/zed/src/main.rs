@@ -37,7 +37,7 @@ use parking_lot::Mutex;
 use project::{project_settings::ProjectSettings, trusted_worktrees};
 use proto;
 use recent_projects::{RemoteSettings, open_remote_project};
-use release_channel::{AppCommitSha, AppVersion, ReleaseChannel};
+use release_channel::{AppCommitSha, AppVersion};
 use session::{AppSession, Session};
 use settings::{BaseKeymap, Settings, SettingsStore, watch_config_file};
 use std::{
@@ -55,7 +55,8 @@ use util::{ResultExt, TryFutureExt, maybe};
 use uuid::Uuid;
 use workspace::{
     AppState, PathList, SerializedWorkspaceLocation, Toast, Workspace, WorkspaceId,
-    WorkspaceSettings, WorkspaceStore, notifications::NotificationId,
+    WorkspaceSettings, WorkspaceStore,
+    notifications::{NotificationId, NotificationSource},
 };
 use zed::{
     OpenListener, OpenRequest, RawOpenRequest, app_menus, build_window_options,
@@ -322,7 +323,7 @@ fn main() {
     let (open_listener, mut open_rx) = OpenListener::new();
 
     let failed_single_instance_check = if *zed_env_vars::ZED_STATELESS
-        || *release_channel::RELEASE_CHANNEL == ReleaseChannel::Dev
+    // || *release_channel::RELEASE_CHANNEL == ReleaseChannel::Dev
     {
         false
     } else {
@@ -938,6 +939,7 @@ fn handle_open_request(request: OpenRequest, app_state: Arc<AppState>, cx: &mut 
                                 format!("Imported shared thread from {}", response.sharer_username),
                             )
                             .autohide(),
+                            NotificationSource::Agent,
                             cx,
                         );
                     })?;
@@ -1360,8 +1362,11 @@ async fn restore_or_create_workspace(app_state: Arc<AppState>, cx: &mut AsyncApp
                 {
                     workspace
                         .update(cx, |workspace, _, cx| {
-                            workspace
-                                .show_toast(Toast::new(NotificationId::unique::<()>(), message), cx)
+                            workspace.show_toast(
+                                Toast::new(NotificationId::unique::<()>(), message),
+                                NotificationSource::System,
+                                cx,
+                            )
                         })
                         .ok();
                     return true;

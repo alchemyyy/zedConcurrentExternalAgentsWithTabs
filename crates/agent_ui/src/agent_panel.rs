@@ -68,7 +68,8 @@ use ui::{
 };
 use util::ResultExt as _;
 use workspace::{
-    CollaboratorId, DraggedSelection, DraggedTab, ToggleZoom, ToolbarItemView, Workspace,
+    CollaboratorId, DraggedSelection, DraggedTab, NotificationSource, ToggleZoom, ToolbarItemView,
+    Workspace,
     dock::{DockPosition, Panel, PanelEvent},
 };
 use zed_actions::{
@@ -1029,7 +1030,7 @@ impl AgentPanel {
             return;
         };
 
-        let Some(active_thread) = thread_view.read(cx).active_thread() else {
+        let Some(active_thread) = thread_view.read(cx).active_thread().cloned() else {
             return;
         };
 
@@ -1311,7 +1312,7 @@ impl AgentPanel {
     ) {
         if let Some(workspace) = self.workspace.upgrade()
             && let Some(thread_view) = self.active_thread_view()
-            && let Some(active_thread) = thread_view.read(cx).active_thread()
+            && let Some(active_thread) = thread_view.read(cx).active_thread().cloned()
         {
             active_thread.update(cx, |thread, cx| {
                 thread
@@ -1332,6 +1333,7 @@ impl AgentPanel {
                             "No active native thread to copy",
                         )
                         .autohide(),
+                        NotificationSource::Agent,
                         cx,
                     );
                 });
@@ -1359,6 +1361,7 @@ impl AgentPanel {
                                 "Thread copied to clipboard (base64 encoded)",
                             )
                             .autohide(),
+                            NotificationSource::Agent,
                             cx,
                         );
                     });
@@ -1381,6 +1384,7 @@ impl AgentPanel {
                             "No clipboard content available",
                         )
                         .autohide(),
+                        NotificationSource::Agent,
                         cx,
                     );
                 });
@@ -1398,6 +1402,7 @@ impl AgentPanel {
                             "Clipboard does not contain text",
                         )
                         .autohide(),
+                        NotificationSource::Agent,
                         cx,
                     );
                 });
@@ -1418,6 +1423,7 @@ impl AgentPanel {
                                 "Failed to decode clipboard content (expected base64)",
                             )
                             .autohide(),
+                            NotificationSource::Agent,
                             cx,
                         );
                     });
@@ -1439,6 +1445,7 @@ impl AgentPanel {
                                 "Failed to parse thread data from clipboard",
                             )
                             .autohide(),
+                            NotificationSource::Agent,
                             cx,
                         );
                     });
@@ -1482,6 +1489,7 @@ impl AgentPanel {
                                 "Thread loaded from clipboard",
                             )
                             .autohide(),
+                            NotificationSource::Agent,
                             cx,
                         );
                     });
