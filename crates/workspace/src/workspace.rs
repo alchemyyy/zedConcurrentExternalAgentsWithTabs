@@ -7280,9 +7280,33 @@ impl Render for Workspace {
                                                 this.bounds = bounds;
 
                                                 if bounds_changed {
+                                                    // Minimum space reserved for the center
+                                                    // editor pane so dock panels shrink before
+                                                    // they start getting clipped.
+                                                    let min_center = px(80.);
+                                                    let total_w = bounds.size.width;
+
+                                                    let left_size = this
+                                                        .left_dock
+                                                        .read(cx)
+                                                        .active_panel_size(window, cx)
+                                                        .unwrap_or(Pixels::ZERO);
+                                                    let right_size = this
+                                                        .right_dock
+                                                        .read(cx)
+                                                        .active_panel_size(window, cx)
+                                                        .unwrap_or(Pixels::ZERO);
+
+                                                    let max_for_left =
+                                                        (total_w - right_size - min_center)
+                                                            .max(Pixels::ZERO);
+                                                    let max_for_right =
+                                                        (total_w - left_size - min_center)
+                                                            .max(Pixels::ZERO);
+
                                                     this.left_dock.update(cx, |dock, cx| {
                                                         dock.clamp_panel_size(
-                                                            bounds.size.width,
+                                                            max_for_left,
                                                             window,
                                                             cx,
                                                         )
@@ -7290,7 +7314,7 @@ impl Render for Workspace {
 
                                                     this.right_dock.update(cx, |dock, cx| {
                                                         dock.clamp_panel_size(
-                                                            bounds.size.width,
+                                                            max_for_right,
                                                             window,
                                                             cx,
                                                         )
