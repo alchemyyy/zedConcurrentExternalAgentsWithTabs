@@ -1,8 +1,13 @@
 use gh_workflow::*;
 
-use crate::tasks::workflows::{runners::Platform, vars, vars::StepOutput};
+use crate::tasks::workflows::{
+    runners::{Arch, Platform},
+    vars,
+    vars::StepOutput,
+};
 
 const SCCACHE_R2_BUCKET: &str = "sccache-zed";
+const CARGO_MTIME_VERSION: &str = "v0.1.2";
 
 const BASH_SHELL: &str = "bash -euxo pipefail {0}";
 // https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idstepsshell
@@ -157,6 +162,62 @@ pub fn cache_rust_dependencies_namespace() -> Step<Use> {
         .add_with(("path", "~/.rustup"))
 }
 
+fn cargo_mtime_target(platform: Platform, arch: Arch) -> &'static str {
+    match (platform, arch) {
+        (Platform::Linux, Arch::X86_64) => "x86_64-unknown-linux-musl",
+        (Platform::Linux, Arch::AARCH64) => "aarch64-unknown-linux-musl",
+        (Platform::Mac, Arch::X86_64) => "x86_64-apple-darwin",
+        (Platform::Mac, Arch::AARCH64) => "aarch64-apple-darwin",
+        (Platform::Windows, Arch::X86_64) => "x86_64-pc-windows-msvc",
+        (Platform::Windows, Arch::AARCH64) => "aarch64-pc-windows-msvc",
+    }
+}
+
+fn default_runner_arch(platform: Platform) -> Arch {
+    match platform {
+        Platform::Linux => Arch::X86_64,
+        Platform::Mac => Arch::AARCH64,
+        Platform::Windows => Arch::X86_64,
+    }
+}
+
+pub fn install_cargo_mtime(platform: Platform) -> Step<Run> {
+    install_cargo_mtime_for_arch(platform, default_runner_arch(platform))
+}
+
+pub fn install_cargo_mtime_for_arch(platform: Platform, arch: Arch) -> Step<Run> {
+    let target = cargo_mtime_target(platform, arch);
+    let url = format!(
+        "https://github.com/zed-industries/cargo-mtime/releases/download/{}/cargo-mtime-{}-{}.tar.gz",
+        CARGO_MTIME_VERSION, target, CARGO_MTIME_VERSION
+    );
+    match platform {
+        Platform::Windows => Step::new("install_cargo_mtime")
+            .run(format!(
+                "New-Item -ItemType Directory -Path \"target\" -Force\n\
+             Invoke-WebRequest -Uri \"{url}\" -OutFile \"target/cargo-mtime.tar.gz\"\n\
+             tar xzf target/cargo-mtime.tar.gz -C target\n\
+             Remove-Item target/cargo-mtime.tar.gz"
+            ))
+            .shell(PWSH_SHELL),
+        Platform::Linux | Platform::Mac => Step::new("install_cargo_mtime").run(format!(
+            "mkdir -p target\n\
+             curl -sL \"{url}\" | tar xz -C target"
+        )),
+    }
+}
+
+pub fn run_cargo_mtime(platform: Platform) -> Step<Run> {
+    match platform {
+        Platform::Windows => Step::new("run_cargo_mtime")
+            .run("./target/cargo-mtime.exe . target/cargo-mtime.db")
+            .shell(PWSH_SHELL),
+        Platform::Linux | Platform::Mac => {
+            Step::new("run_cargo_mtime").run("./target/cargo-mtime . target/cargo-mtime.db")
+        }
+    }
+}
+
 pub fn setup_sccache(platform: Platform) -> Step<Run> {
     let step = match platform {
         Platform::Windows => named::pwsh("./script/setup-sccache.ps1"),
@@ -170,7 +231,12 @@ pub fn setup_sccache(platform: Platform) -> Step<Run> {
 
 pub fn show_sccache_stats(platform: Platform) -> Step<Run> {
     match platform {
-        Platform::Windows => named::pwsh("sccache --show-stats; exit 0"),
+        // Use $env:RUSTC_WRAPPER (absolute path) because GITHUB_PATH changes
+        // don't take effect until the next step in PowerShell.
+        // Check if RUSTC_WRAPPER is set first (it won't be for fork PRs without secrets).
+        Platform::Windows => {
+            named::pwsh("if ($env:RUSTC_WRAPPER) { & $env:RUSTC_WRAPPER --show-stats }; exit 0")
+        }
         Platform::Linux | Platform::Mac => named::bash("sccache --show-stats || true"),
     }
 }
